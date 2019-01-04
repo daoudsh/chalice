@@ -642,12 +642,22 @@ class Chalice(object):
         # Sometimes the event can be something that's not
         # what we specified in our request_template mapping.
         # When that happens, we want to give a better error message here.
-        resource_path = event.get('requestContext', {}).get('resourcePath')
+        is_request_context_exist = event.get('requestContext', None)
+
+        if is_request_context_exist:
+            resource_path = event.get('requestContext', {}).get('resourcePath')
+        else:
+            resource_path = event.get('resource')
+
         if resource_path is None:
             return error_response(error_code='InternalServerError',
                                   message='Unknown request.',
                                   http_status_code=500)
-        http_method = event['requestContext']['httpMethod']
+        if is_request_context_exist:
+            http_method = event['requestContext']['httpMethod']
+        else:
+            http_method = event['httpMethod']
+
         if resource_path not in self.routes:
             raise ChaliceError("No view function for: %s" % resource_path)
         if http_method not in self.routes[resource_path]:
@@ -660,14 +670,24 @@ class Chalice(object):
         function_args = {name: event['pathParameters'][name]
                          for name in route_entry.view_args}
         self.lambda_context = context
-        self.current_request = Request(event['queryStringParameters'],
-                                       event['headers'],
-                                       event['pathParameters'],
-                                       event['requestContext']['httpMethod'],
-                                       event['body'],
-                                       event['requestContext'],
-                                       event['stageVariables'],
-                                       event.get('isBase64Encoded', False))
+        if is_request_context_exist:
+            self.current_request = Request(event['queryStringParameters'],
+                                           event['headers'],
+                                           event['pathParameters'],
+                                           event['requestContext']['httpMethod'],
+                                           event['body'],
+                                           event['requestContext'],
+                                           event['stageVariables'],
+                                           event.get('isBase64Encoded', False))
+        else:
+            self.current_request = Request(event['queryStringParameters'],
+                                           event['headers'],
+                                           event['pathParameters'],
+                                           event['httpMethod'],
+                                           event['body'],
+                                           event.get('requestContext', {}),
+                                           event['stageVariables'],
+                                           event.get('isBase64Encoded', False))
         # We're getting the CORS headers before validation to be able to
         # output desired headers with
         cors_headers = None
